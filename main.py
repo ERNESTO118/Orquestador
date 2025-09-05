@@ -3,7 +3,7 @@ import requests
 from supabase import create_client, Client
 import time
 
-# --- 1. CONEXIÓN A LA BASE DE DATOS ---
+# --- 1. CONEXIONES ---
 def inicializar_supabase():
     url_supabase = os.environ.get("SUPABASE_URL")
     key_supabase = os.environ.get("SUPABASE_KEY")
@@ -12,46 +12,37 @@ def inicializar_supabase():
     return supabase
 
 # --- 2. FUNCIÓN PARA "DESPERTAR" A UN TRABAJADOR ---
-# Railway nos da una URL especial para reiniciar un servicio.
 def despertar_trabajador(nombre_trabajador):
     print(f"⏰ Despertando al {nombre_trabajador}...")
     # En el futuro, aquí pondremos la URL de reinicio que nos da Railway.
-    # Por ahora, solo lo simulamos.
     print(f"✅ Orden de reinicio enviada a {nombre_trabajador}.")
     return True
 
-# --- EL PUNTO DE ENTRADA: EL CEREBRO DEL ORQUESTADOR ---
+# --- EL CEREBRO DEL ORQUESTADOR v2.0 ---
 def main():
     print("\n--- CICLO DEL ORQUESTADOR INICIADO ---")
     supabase = inicializar_supabase()
+    if not supabase: return
+
+    # TAREA 1: BUSCAR NUEVAS CAMPAÑAS SOLICITADAS POR EL CLIENTE
+    print("1. Verificando si hay nuevas campañas pendientes...")
+    response_campanas = supabase.table('campanas').select('*').eq('estado_campana', 'pendiente').limit(1).execute()
+
+    if response_campanas.data:
+        campana_a_iniciar = response_campanas.data[0]
+        id_campana = campana_a_iniciar['id']
+        print(f"  -> ¡Sí! Se encontró la campaña pendiente ID: {id_campana}. Iniciando proceso.")
+        
+        # Marcamos la campaña como 'en_proceso' para no volver a tomarla
+        supabase.table('campanas').update({'estado_campana': 'cazando'}).eq('id', id_campana).execute()
+        
+        # Despertamos al primer trabajador de la línea
+        despertar_trabajador("worker-cazador")
+        return # Terminamos el ciclo aquí
+
+    # (Aquí iría la lógica para despertar al Analista y al Persuasor que ya teníamos)
     
-    if not supabase:
-        print("❌ No se pudo conectar a Supabase. Abortando ciclo.")
-        return
-
-    # PRIORIDAD 1: ¿HAY LEADS LISTOS PARA PERSUADIR?
-    print("1. Verificando si hay prospectos para el Persuasor...")
-    response_persuadir = supabase.table('prospectos').select('prospecto_id', count='exact').eq('estado_prospecto', 'analizado_calificado').execute()
-    if response_persuadir.count > 0:
-        print(f"  -> ¡Sí! Hay {response_persuadir.count} leads listos. Despertando al Persuasor.")
-        despertar_trabajador("worker-persuasor")
-        return # Terminamos el ciclo aquí para darle prioridad.
-
-    # PRIORIDAD 2: ¿HAY PROSPECTOS CAZADOS PARA ANALIZAR?
-    print("2. Verificando si hay prospectos para el Analista...")
-    response_analizar = supabase.table('prospectos').select('prospecto_id', count='exact').eq('estado_prospecto', 'cazado').execute()
-    if response_analizar.count > 0:
-        print(f"  -> ¡Sí! Hay {response_analizar.count} prospectos cazados. Despertando al Analista.")
-        despertar_trabajador("worker-analista")
-        return
-
-    # PRIORIDAD 3: ¿NECESITAMOS CAZAR MÁS PROSPECTOS?
-    print("3. Verificando si se necesita cazar nuevos prospectos...")
-    # Esta lógica será más compleja en el futuro (revisará cuotas diarias, etc.)
-    # Por ahora, simplemente activará al cazador si no hay otras tareas.
-    print("  -> Decisión: Activar al Cazador para buscar nuevos prospectos.")
-    despertar_trabajador("worker-cazador")
-    
+    print("✅ No hay nuevas tareas pendientes. El sistema está al día.")
     print("--- CICLO DEL ORQUESTADOR FINALIZADO ---")
 
 # --- BUCLE PRINCIPAL ---
@@ -60,8 +51,7 @@ if __name__ == "__main__":
         try:
             main()
         except Exception as e:
-            print(f"Ocurrió un error en el ciclo principal del Orquestador: {e}")
+            print(f"Ocurrió un error en el ciclo del Orquestador: {e}")
         
-        # El Orquestador revisa el estado del sistema cada 5 minutos.
-        print("\nOrquestador en modo de espera por 5 minutos...")
-        time.sleep(300)
+        print("\nOrquestador en modo de espera por 1 minuto...")
+        time.sleep(60) # Lo ponemos a revisar cada minuto
