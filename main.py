@@ -1,67 +1,76 @@
 import os
-import requests
 from supabase import create_client
 import time
 import json
+from flask import Flask, request, jsonify
+from threading import Thread
 
-# --- CONEXIÓN A SUPABASE ---
-def inicializar_supabase():
-    url_supabase = os.environ.get("SUPABASE_URL")
-    key_supabase = os.environ.get("SUPABASE_KEY")
-    return create_client(url_supabase, key_supabase)
+# --- INICIALIZACIÓN DE SERVICIOS ---
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
+supabase = create_client(supabase_url, supabase_key)
 
-# --- FUNCIÓN PARA "DESPERTAR" A UN TRABAJADOR ---
-def despertar_trabajador(nombre_trabajador):
-    print(f"⏰ Despertando al {nombre_trabajador}...")
-    # Esta función necesitará la URL de reinicio de Railway en el futuro
-    print(f"✅ Orden de reinicio enviada a {nombre_trabajador}.")
-    return True
+app = Flask(__name__) # Inicializamos el servidor web Flask
 
-# --- EL CEREBRO DEL ORQUESTADOR v2.0 ---
-def main():
-    print("\n--- CICLO DEL ORQUESTADOR INICIADO ---")
-    supabase = inicializar_supabase()
-    if not supabase: return
-
-    # TAREA 1: BUSCAR NUEVAS CAMPAÑAS PENDIENTES
-    print("1. Verificando si hay campañas 'pendientes'...")
-    response_campanas = supabase.table('campanas').select('*').eq('estado_campana', 'pendiente').limit(1).execute()
-
-    if response_campanas.data:
-        campana = response_campanas.data[0]
-        id_campana = campana['id']
-        print(f"  -> ¡Sí! Se encontró la campaña pendiente ID: {id_campana}. Iniciando...")
-        
-        supabase.table('campanas').update({'estado_campana': 'cazando'}).eq('id', id_campana).execute()
-        despertar_trabajador("worker-cazador")
-        return
-
-    # TAREA 2: BUSCAR PROSPECTOS LISTOS PARA ANALIZAR
-    print("2. Verificando si hay prospectos 'cazados'...")
-    response_analizar = supabase.table('prospectos').select('prospecto_id', count='exact').eq('estado_prospecto', 'cazado').execute()
-    if response_analizar.count > 0:
-        print(f"  -> ¡Sí! Hay {response_analizar.count} prospectos listos. Despertando al Analista.")
-        despertar_trabajador("worker-analista")
-        return
-
-    # TAREA 3: BUSCAR LEADS LISTOS PARA PERSUADIR
-    print("3. Verificando si hay prospectos 'analizado_calificado'...")
-    response_persuadir = supabase.table('prospectos').select('prospecto_id', count='exact').eq('estado_prospecto', 'analizado_calificado').execute()
-    if response_persuadir.count > 0:
-        print(f"  -> ¡Sí! Hay {response_persuadir.count} leads listos. Despertando al Persuasor.")
-        despertar_trabajador("worker-persuadir")
-        return
-    
-    print("✅ No hay nuevas tareas pendientes.")
-    print("--- CICLO DEL ORQUESTADOR FINALIZADO ---")
-
-# --- BUCLE PRINCIPAL ---
-if __name__ == "__main__":
+# --- EL CEREBRO DEL ORQUESTADOR (El ciclo que ya conocemos) ---
+def ciclo_del_orquestador():
     while True:
+        print("\n--- INICIANDO CICLO DEL ORQUESTADOR ---")
         try:
-            main()
+            # Tarea 1: Buscar campañas 'pendientes'
+            response_campanas = supabase.table('campanas').select('*').eq('estado_campana', 'pendiente').limit(1).execute()
+            if response_campanas.data:
+                # ... (Aquí irá la lógica para despertar a los workers, que añadiremos después) ...
+                print(f"Se encontró una campaña pendiente: {response_campanas.data[0]['id']}")
+                # Por ahora, solo la marcamos como 'cazando'
+                supabase.table('campanas').update({'estado_campana': 'cazando'}).eq('id', response_campanas.data[0]['id']).execute()
+                print("Campaña marcada como 'cazando'.")
+            else:
+                print("No hay campañas nuevas.")
+            
+            # ... (Aquí irá la lógica para revisar 'cazados', 'analizados', etc.) ...
+
         except Exception as e:
-            print(f"Ocurrió un error en el ciclo del Orquestador: {e}")
+            print(f"Error en el ciclo del Orquestador: {e}")
         
-        print("\nOrquestador en modo de espera por 1 minuto...")
+        print("--- CICLO FINALIZADO. Durmiendo por 1 minuto. ---")
         time.sleep(60)
+
+# --- LA NUEVA "PUERTA DE ESCUCHA" (API para el Dashboard) ---
+@app.route('/crear-campana', methods=['POST'])
+def crear_nueva_campana():
+    print("\n¡Recibida una nueva orden del Dashboard!")
+    try:
+        # Obtenemos los datos que nos envía el Dashboard
+        datos_formulario = request.get_json()
+        
+        # Preparamos la nueva campaña para guardarla
+        nueva_campana = {
+            'cliente_id': 1, # Fijo por ahora
+            'nombre_campana': f"Campaña: {datos_formulario['cliente_ideal']}",
+            'criterio_busqueda': json.dumps(datos_formulario),
+            'estado_campana': 'pendiente' # ¡Lista para ser recogida por el ciclo!
+        }
+
+        # Guardamos la campaña en Supabase
+        supabase.table('campanas').insert(nueva_campana).execute()
+        print("✅ Nueva campaña guardada en la base de datos.")
+        
+        # Le respondemos al Dashboard que todo salió bien
+        return jsonify({"status": "success", "message": "Campaña creada con éxito."}), 200
+
+    except Exception as e:
+        print(f"❌ Error al procesar la orden del Dashboard: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- ARRANQUE DEL SISTEMA ---
+if __name__ == '__main__':
+    # Iniciamos el ciclo del Orquestador en un "hilo" separado para que no bloquee la API
+    orquestador_thread = Thread(target=ciclo_del_orquestador)
+    orquestador_thread.daemon = True
+    orquestador_thread.start()
+    
+    # Ponemos a funcionar la "puerta de escucha" (el servidor Flask)
+    # Railway nos dará el puerto a través de la variable de entorno PORT
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
