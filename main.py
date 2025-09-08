@@ -6,8 +6,8 @@ from flask import Flask, request, jsonify
 from threading import Thread
 
 # --- INICIALIZACIÓN DE SERVICIOS ---
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
+supabase_url = os.environ.get("https://orquestador-production.up.railway.app/crear-campana")
+supabase_key = os.environ.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndGlodGZ5bmRuZmtidXdmYnhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU5OTg4MjIsImV4cCI6MjA3MTU3NDgyMn0.K4igC3AgVkrmO6EDJDY9L_T-etecDTEXpmKfPimUE-g")
 supabase = create_client(supabase_url, supabase_key)
 
 app = Flask(__name__) # Inicializamos el servidor web Flask
