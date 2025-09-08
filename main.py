@@ -6,8 +6,8 @@ from flask import Flask, request, jsonify
 from threading import Thread
 
 # --- INICIALIZACIÓN DE SERVICIOS ---
-supabase_url = os.environ.get("https://lgtihtfyndnfkbuwfbxo.supabase.co")
-supabase_key = os.environ.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndGlodGZ5bmRuZmtidXdmYnhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU5OTg4MjIsImV4cCI6MjA3MTU3NDgyMn0.K4igC3AgVkrmO6EDJDY9L_T-etecDTEXpmKfPimUE-g")
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
 supabase = PostgrestClient(base_url=supabase_url, headers={"apikey": supabase_key})
 app = Flask(__name__)
 
@@ -52,7 +52,3 @@ if __name__ == '__main__':
     
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
-
-```4.  **Guarda los cambios.**
-
-Espera a que Railway redespliegue al Orquestador. Esta vez, el error de red en sus logs desaparecerá. Y cuando eso pase, el Dashboard podrá enviarle las órdenes sin problemas. ¡Este es el culpable que hemos estado buscando todo el día
